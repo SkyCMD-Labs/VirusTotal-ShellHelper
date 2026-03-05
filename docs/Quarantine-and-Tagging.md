@@ -8,7 +8,7 @@ The VirusTotal Shell Helper now includes automatic file tagging, permission lock
 Files are automatically tagged based on scan results:
 - **`vt-clean`** - File passed VirusTotal scan
 - **`vt-malicious`** - File detected as malicious
-- **`vt-quarantined`** - File has been quarantined
+- **`vt-quarantined`** - File has been moved to quarantine
 
 Tags are visible in:
 - Dolphin Information Panel (press `F11`)
@@ -28,10 +28,25 @@ Malicious files can be quarantined with a single click from the notification.
 **Quarantine Directory:** `~/.local/share/virustotal-quarantine`
 
 Quarantined files:
+- Stored using full SHA256 hash (no extension, prevents collisions)
 - Moved to isolated directory with strict permissions (700)
 - Set to read-only, no execute (chmod 400)
-- Original path stored for potential restoration
-- Can only be listed or deleted (not executed)
+- Complete action history tracked in JSON audit log
+- Can be restored to original location with original permissions
+
+### 📋 Audit Logging
+All scans and file actions are logged to:
+```
+~/.local/share/virustotal-shell/audit/{file-hash}.json
+```
+
+Each file (tracked by SHA256 hash) has a complete audit trail:
+- Scan results and detection counts
+- Tag and lockdown actions
+- Quarantine and restore operations
+- VirusTotal URLs for reference
+
+**See [Audit-Logging.md](Audit-Logging.md) for full documentation.**
 
 ## Usage
 
@@ -47,29 +62,77 @@ vt-check --notify suspicious.exe
 
 ### Managing Quarantine
 
+Use the `vt-manage` command with two-level structure: `vt-manage <category> <command>`
+
 #### List quarantined files
 ```bash
-vt-quarantine list
+vt-manage quarantine list
 ```
 
 #### Open quarantine directory in file manager
 ```bash
-vt-quarantine open
+vt-manage quarantine open
 ```
 
 #### Get quarantine path
 ```bash
-vt-quarantine path
+vt-manage quarantine path
 ```
 
 #### Delete a quarantined file permanently
 ```bash
-vt-quarantine delete ~/.local/share/virustotal-quarantine/malware.exe
+# Using original filename (searches audit logs)
+vt-manage quarantine delete malware.exe
+
+# Or using full SHA256 hash
+vt-manage quarantine delete 8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85
+```
+
+#### Clear all quarantine files (preserves audit logs)
+```bash
+vt-manage quarantine clear
 ```
 
 #### Restore a file (⚠️ DANGEROUS - use extreme caution!)
 ```bash
-vt-quarantine restore ~/.local/share/virustotal-quarantine/file.exe
+# Using original filename
+vt-manage quarantine restore file.exe
+
+# Or using full hash
+vt-manage quarantine restore 8739c76e...
+```
+
+Restore reads metadata from the audit log to:
+- Restore to original location
+- Restore original permissions
+- Log the restore action
+
+### Managing Audit Logs
+
+#### List all audit logs
+```bash
+vt-manage audit list
+```
+
+Shows all files with audit history:
+- Filename
+- SHA256 hash
+- First seen timestamp
+- Number of logged actions
+
+#### View full audit log for a file
+```bash
+vt-manage audit show <hash>
+```
+
+Displays complete JSON audit log including:
+- All scan results
+- Tag and lockdown actions
+- Quarantine and restore operations
+
+#### Clear all audit logs (preserves quarantine files)
+```bash
+vt-manage audit clear
 ```
 
 ## Viewing Tagged Files in Dolphin
@@ -80,11 +143,9 @@ vt-quarantine restore ~/.local/share/virustotal-quarantine/file.exe
    - Shows `vt-clean`, `vt-malicious`, or `vt-quarantined`
 
 2. **Search by tag**
-   ```
-   tag:vt-malicious
-   tag:vt-clean
-   tag:vt-quarantined
-   ```
+   - Press Ctrl+F in Dolphin
+   - Type: `tag:vt-malicious`
+   - Or: `tag:vt-clean`, `tag:vt-quarantined`
 
 3. **Tags sidebar**
    - View → Panels → Places
@@ -120,18 +181,33 @@ This creates a system mount that:
 
 ## Technical Details
 
-### Extended Attributes
-Files store metadata using extended attributes (xattr):
-- `user.vt.status` - Scan status (clean/malicious/quarantined)
-- `user.vt.scan_time` - Unix timestamp of scan
-- `user.vt.original_perms` - Original file permissions
-- `user.vt.quarantine_time` - Quarantine timestamp
-- `user.vt.original_path` - Original file location
+### Metadata Storage
+
+**Audit Logs (Primary):**
+All scan results and file actions are logged in JSON format:
+```
+~/.local/share/virustotal-shell/audit/{SHA256}.json
+```
+
+This provides:
+- Complete action history per file (by hash)
+- Scan results with detection counts
+- Quarantine metadata for restore
+- Persistent across reboots
+
+**Extended Attributes (Secondary):**
+Files also store metadata using xattr (when supported):
+- `user.xdg.tags` - Visual tags (vt-clean, vt-malicious, vt-quarantined)
+- `user.vt.status` - Scan status
+- `user.vt.scan_time` - Unix timestamp
+- `user.vt.original_perms` - Original permissions (for non-quarantined files)
 
 View attributes:
 ```bash
-getfattr -d -m user.vt file.exe
+getfattr -d -m user file.exe
 ```
+
+**Note:** Quarantine metadata (original_path, original_perms) is stored in audit logs, not xattr, because tmpfs (quarantine storage) doesn't support user extended attributes.
 
 ### Dependencies
 - `balooctl6` - KDE Baloo file indexing (for tags)
@@ -145,31 +221,49 @@ check_dependencies
 
 ## Installation
 
-The new scripts are included in the project:
-- `vt-actions.sh` - Core functionality (sourced by vt-check)
-- `vt-quarantine` - Quarantine management CLI
-- `vt-check` - Updated with auto-tagging and quarantine support
+The scripts are included in the project:
+- `vt-check` - Main scanning tool with auto-tagging and quarantine support
+- `vt-actions.sh` - Core functionality library (sourced by vt-check)
+- `vt-manage` - Quarantine and audit management CLI
 
 Install/update:
 ```bash
 ./install.sh
 ```
 
-This will copy all scripts to `~/.local/bin/`
+This will install all scripts to `~/.local/bin/` and optionally set up tmpfs quarantine mount.
 
 ## Uninstallation
 
-To remove all tags:
+### Automated Uninstall (Recommended)
 ```bash
-# Remove all vt-* tags from files (run in your home directory)
+./uninstall.sh
+```
+
+The uninstaller will:
+1. Remove all installed scripts
+2. Remove file manager integrations
+3. Optionally remove quarantine and audit data
+4. Optionally remove tmpfs mount (if configured)
+
+### Manual Tag Removal
+
+To remove all vt-* tags from files:
+```bash
+# Remove all vt-* tags (run in your home directory)
 find ~ -type f -exec balooctl6 tag remove vt-clean {} \; 2>/dev/null
 find ~ -type f -exec balooctl6 tag remove vt-malicious {} \; 2>/dev/null
 find ~ -type f -exec balooctl6 tag remove vt-quarantined {} \; 2>/dev/null
 ```
 
-To delete quarantine directory:
+### Manual Data Removal
+
 ```bash
+# Remove quarantine directory
 rm -rf ~/.local/share/virustotal-quarantine
+
+# Remove audit logs
+rm -rf ~/.local/share/virustotal-shell
 ```
 
 ## Example Workflow
@@ -182,5 +276,5 @@ rm -rf ~/.local/share/virustotal-quarantine
    - Notification shows "Quarantine File" button
 4. Click "Quarantine File" to isolate it
 5. File moved to quarantine with strict permissions
-6. Later: `vt-quarantine list` to review
-7. Delete permanently: `vt-quarantine delete <file>`
+6. Later: `vt-manage quarantine list` to review
+7. Delete permanently: `vt-manage quarantine delete <file-or-hash>`

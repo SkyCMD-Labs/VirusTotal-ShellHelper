@@ -16,8 +16,11 @@ A lightweight shell script to check file cleanliness via VirusTotal. No Python, 
 - **Auto-tagging** — tags files as clean/malicious (visible in KDE Dolphin)
 - **Auto-lockdown** — removes execute/write permissions from malicious files
 - **One-click quarantine** — isolate malicious files with noexec protection
+- **Comprehensive audit logging** — JSON logs track all scans, detections, and file actions
 
 ## Quick Start
+
+### Installation
 
 ```bash
 ./install.sh
@@ -26,8 +29,9 @@ A lightweight shell script to check file cleanliness via VirusTotal. No Python, 
 The installer will:
 1. Check system dependencies
 2. Download `vt` CLI if needed
-3. Install `vt-check` to `~/.local/bin/`
+3. Install `vt-check`, `vt-actions.sh`, and `vt-manage` to `~/.local/bin/`
 4. Set up file manager context menu integration
+5. Optionally configure tmpfs quarantine mount
 
 After installation, configure your VirusTotal API key:
 
@@ -36,6 +40,18 @@ vt init
 ```
 
 Get a free API key at: https://www.virustotal.com/gui/my-apikey
+
+### Uninstallation
+
+```bash
+./uninstall.sh
+```
+
+The uninstaller will:
+1. Remove all installed scripts
+2. Remove file manager integrations
+3. Optionally remove quarantine files and audit logs
+4. Optionally remove tmpfs mount (if configured)
 
 ## Usage
 
@@ -77,6 +93,7 @@ See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTo
 - [How It Works](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/How-It-Works) — technical overview
 - [File Managers](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/File-Managers) — context menu setup
 - [Quarantine & Tagging](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Quarantine-and-Tagging) — file tagging and quarantine features
+- [Audit Logging](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Audit-Logging) — complete scan and action history in JSON format
 - [Isolation](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Isolation) — noexec mount setup for enhanced security
 - [Features](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Features) — quick reference guide
 - [Troubleshooting](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Troubleshooting) — common issues

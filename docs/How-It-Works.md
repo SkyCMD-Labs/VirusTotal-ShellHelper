@@ -130,8 +130,8 @@ Flow:
 1. File detected as malicious
 2. Locked down with `chmod 400`
 3. Automatically moved to `~/.local/share/virustotal-quarantine/`
-4. Tagged as `vt-quarantined`
-5. Original path stored in xattr for potential restoration
+4. Stored using full SHA256 hash as filename
+5. Original path and permissions stored in audit log for potential restoration
 
 #### Interactive Quarantine
 With `--notify` flag, users get a notification with action button:

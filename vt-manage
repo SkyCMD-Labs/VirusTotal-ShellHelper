@@ -1,0 +1,408 @@
+#!/usr/bin/env bash
+#
+# vt-manage - Manage VirusTotal quarantine and audit logs
+#
+# Usage: vt-manage <category> <command> [args]
+#
+# Categories:
+#   quarantine        Manage quarantined files
+#   audit             Manage audit logs
+#
+
+set -o pipefail
+
+VERSION="1.0.0"
+
+# Source action functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/vt-actions.sh" ]]; then
+    source "$SCRIPT_DIR/vt-actions.sh"
+elif [[ -f "$HOME/.local/bin/vt-actions.sh" ]]; then
+    source "$HOME/.local/bin/vt-actions.sh"
+else
+    echo "Error: vt-actions.sh not found" >&2
+    exit 1
+fi
+
+usage() {
+    cat <<EOF
+vt-manage v${VERSION} - Manage VirusTotal quarantine and audit logs
+
+Usage: vt-manage <category> <command> [args]
+
+Quarantine Commands:
+  vt-manage quarantine list              List all quarantined files
+  vt-manage quarantine restore <file>    Restore a file from quarantine (DANGEROUS!)
+  vt-manage quarantine delete <file>     Delete a quarantined file
+  vt-manage quarantine clear             Clear all quarantined files (keeps audit logs)
+  vt-manage quarantine open              Open quarantine directory
+  vt-manage quarantine path              Print quarantine directory path
+
+Audit Commands:
+  vt-manage audit list                   List all audit logs
+  vt-manage audit show <hash>            Show detailed audit log for file hash
+  vt-manage audit clear                  Clear all audit logs (keeps quarantine files)
+  vt-manage audit path                   Print audit directory path
+
+Examples:
+  vt-manage quarantine list
+  vt-manage quarantine restore malware.exe
+  vt-manage quarantine clear
+  vt-manage audit show 275a021bbfb6489e...
+  vt-manage audit clear
+
+Options:
+  -h, --help        Show this help message
+EOF
+}
+
+cmd_list() {
+    list_quarantine
+}
+
+cmd_restore() {
+    local file="$1"
+    
+    if [[ -z "$file" ]]; then
+        echo "Error: No file specified" >&2
+        echo "Usage: vt-quarantine restore <file>" >&2
+        exit 1
+    fi
+    
+    # If not a full path, search in quarantine directory by matching filename in audit logs
+    if [[ ! -f "$file" ]]; then
+        local found=""
+        # Search audit logs for matching filename
+        if command -v jq &>/dev/null; then
+            for log in "$AUDIT_LOG_DIR"/*.json; do
+                if [[ -f "$log" ]]; then
+                    local stored_filename
+                    stored_filename=$(jq -r '.filename' "$log" 2>/dev/null)
+                    if [[ "$stored_filename" == "$file" ]]; then
+                        local hash
+                        hash=$(jq -r '.file_hash' "$log" 2>/dev/null)
+                        if [[ -f "$QUARANTINE_DIR/$hash" ]]; then
+                            found="$QUARANTINE_DIR/$hash"
+                            break
+                        fi
+                    fi
+                fi
+            done
+        fi
+        
+        if [[ -n "$found" ]]; then
+            file="$found"
+        else
+            echo "Error: File not found: $file" >&2
+            echo "Use 'vt-quarantine list' to see available files" >&2
+            exit 1
+        fi
+    fi
+    
+    echo "⚠️  WARNING: You are about to restore a potentially malicious file!"
+    echo "File: $file"
+    echo ""
+    read -p "Are you sure you want to restore this file? (type 'yes' to confirm): " confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        echo "Restore cancelled"
+        exit 0
+    fi
+    
+    local restored
+    restored=$(restore_from_quarantine "$file")
+    
+    if [[ -n "$restored" ]]; then
+        echo "✓ File restored to: $restored"
+        echo "⚠️  Please scan this file again before executing!"
+    else
+        echo "✗ Failed to restore file" >&2
+        exit 1
+    fi
+}
+
+cmd_delete() {
+    local file="$1"
+    
+    if [[ -z "$file" ]]; then
+        echo "Error: No file specified" >&2
+        echo "Usage: vt-quarantine delete <file>" >&2
+        exit 1
+    fi
+    
+    # If not a full path, search in quarantine directory by matching filename in audit logs
+    if [[ ! -f "$file" ]]; then
+        local found=""
+        # Search audit logs for matching filename
+        if command -v jq &>/dev/null; then
+            for log in "$AUDIT_LOG_DIR"/*.json; do
+                if [[ -f "$log" ]]; then
+                    local stored_filename
+                    stored_filename=$(jq -r '.filename' "$log" 2>/dev/null)
+                    if [[ "$stored_filename" == "$file" ]]; then
+                        local hash
+                        hash=$(jq -r '.file_hash' "$log" 2>/dev/null)
+                        if [[ -f "$QUARANTINE_DIR/$hash" ]]; then
+                            found="$QUARANTINE_DIR/$hash"
+                            break
+                        fi
+                    fi
+                fi
+            done
+        fi
+        
+        if [[ -n "$found" ]]; then
+            file="$found"
+        else
+            echo "Error: File not found: $file" >&2
+            echo "Use 'vt-quarantine list' to see available files" >&2
+            exit 1
+        fi
+    fi
+    
+    if [[ "$file" != "$QUARANTINE_DIR"/* ]]; then
+        echo "Error: File is not in quarantine directory" >&2
+        exit 1
+    fi
+    
+    echo "⚠️  WARNING: This will permanently delete the file!"
+    echo "File: $file"
+    echo ""
+    read -p "Are you sure you want to delete this file? (type 'yes' to confirm): " confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        echo "Delete cancelled"
+        exit 0
+    fi
+    
+    if rm -f "$file"; then
+        echo "✓ File permanently deleted"
+    else
+        echo "✗ Failed to delete file" >&2
+        exit 1
+    fi
+}
+
+cmd_open() {
+    if [[ ! -d "$QUARANTINE_DIR" ]]; then
+        mkdir -p "$QUARANTINE_DIR"
+        chmod 700 "$QUARANTINE_DIR"
+    fi
+    
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$QUARANTINE_DIR" 2>/dev/null &
+        echo "Opening quarantine directory: $QUARANTINE_DIR"
+    else
+        echo "Error: xdg-open not found" >&2
+        echo "Quarantine directory: $QUARANTINE_DIR" >&2
+        exit 1
+    fi
+}
+
+cmd_quarantine_path() {
+    echo "$QUARANTINE_DIR"
+}
+
+cmd_quarantine_clear() {
+    if [[ ! -d "$QUARANTINE_DIR" ]] || [[ -z "$(ls -A "$QUARANTINE_DIR" 2>/dev/null)" ]]; then
+        echo "Quarantine is already empty"
+        return 0
+    fi
+    
+    echo "⚠️  WARNING: This will delete ALL quarantined files!"
+    echo "Quarantine directory: $QUARANTINE_DIR"
+    echo "Audit logs will be preserved."
+    echo ""
+    read -p "Are you sure you want to clear the quarantine? (type 'yes' to confirm): " confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        echo "Clear cancelled"
+        exit 0
+    fi
+    
+    if rm -f "$QUARANTINE_DIR"/* 2>/dev/null; then
+        echo "✓ Quarantine cleared"
+    else
+        echo "✗ Failed to clear quarantine" >&2
+        exit 1
+    fi
+}
+
+cmd_audit_list() {
+    if [[ ! -d "$AUDIT_LOG_DIR" ]]; then
+        echo "No audit logs found"
+        return 0
+    fi
+    
+    echo ""
+    echo "Audit Logs"
+    echo "═══════════════════════════════════════════════════════════════════════════════"
+    
+    local count=0
+    for log in "$AUDIT_LOG_DIR"/*.json; do
+        if [[ -f "$log" ]]; then
+            ((count++))
+            local hash
+            hash=$(basename "$log" .json)
+            
+            if command -v jq &>/dev/null; then
+                local filename first_seen action_count
+                filename=$(jq -r '.filename' "$log" 2>/dev/null)
+                first_seen=$(jq -r '.first_seen' "$log" 2>/dev/null)
+                action_count=$(jq -r '.actions | length' "$log" 2>/dev/null)
+                
+                if [[ -n "$first_seen" ]] && [[ "$first_seen" != "null" ]]; then
+                    first_seen=$(date -d "@$first_seen" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "Unknown")
+                fi
+                
+                printf "\n[%d] %s\n" "$count" "$filename"
+                printf "    Hash:        %s\n" "$hash"
+                printf "    First seen:  %s\n" "$first_seen"
+                printf "    Actions:     %s\n" "$action_count"
+            else
+                printf "\n[%d] %s\n" "$count" "$hash"
+            fi
+        fi
+    done
+    
+    if [[ $count -eq 0 ]]; then
+        echo ""
+        echo "No audit logs found"
+    else
+        echo ""
+        echo "═══════════════════════════════════════════════════════════════════════════════"
+        printf "Total: %d log(s)\n" "$count"
+    fi
+    echo ""
+}
+
+cmd_audit_show() {
+    local hash="$1"
+    
+    if [[ -z "$hash" ]]; then
+        echo "Error: No file hash specified" >&2
+        echo "Usage: vt-manage audit show <hash>" >&2
+        exit 1
+    fi
+    
+    local log_file="$AUDIT_LOG_DIR/${hash}.json"
+    
+    if [[ ! -f "$log_file" ]]; then
+        echo "Error: Audit log not found for hash: $hash" >&2
+        exit 1
+    fi
+    
+    if command -v jq &>/dev/null; then
+        jq . "$log_file"
+    else
+        cat "$log_file"
+    fi
+}
+
+cmd_audit_path() {
+    echo "$AUDIT_LOG_DIR"
+}
+
+cmd_audit_clear() {
+    if [[ ! -d "$AUDIT_LOG_DIR" ]] || [[ -z "$(ls -A "$AUDIT_LOG_DIR" 2>/dev/null)" ]]; then
+        echo "Audit logs are already empty"
+        return 0
+    fi
+    
+    echo "⚠️  WARNING: This will delete ALL audit logs!"
+    echo "Audit directory: $AUDIT_LOG_DIR"
+    echo "This will remove all scan history and metadata."
+    echo "Quarantined files will remain but lose their metadata."
+    echo ""
+    read -p "Are you sure you want to clear all audit logs? (type 'yes' to confirm): " confirm
+    
+    if [[ "$confirm" != "yes" ]]; then
+        echo "Clear cancelled"
+        exit 0
+    fi
+    
+    if rm -f "$AUDIT_LOG_DIR"/*.json 2>/dev/null; then
+        echo "✓ Audit logs cleared"
+    else
+        echo "✗ Failed to clear audit logs" >&2
+        exit 1
+    fi
+}
+
+main() {
+    local category="$1"
+    local command="$2"
+    shift 2 2>/dev/null || true
+    
+    case "$category" in
+        quarantine)
+            case "$command" in
+                list)
+                    cmd_list
+                    ;;
+                restore)
+                    cmd_restore "$@"
+                    ;;
+                delete)
+                    cmd_delete "$@"
+                    ;;
+                clear)
+                    cmd_quarantine_clear
+                    ;;
+                open)
+                    cmd_open
+                    ;;
+                path)
+                    cmd_quarantine_path
+                    ;;
+                "")
+                    echo "Error: No quarantine command specified" >&2
+                    usage
+                    exit 1
+                    ;;
+                *)
+                    echo "Error: Unknown quarantine command: $command" >&2
+                    usage
+                    exit 1
+                    ;;
+            esac
+            ;;
+        audit)
+            case "$command" in
+                list)
+                    cmd_audit_list
+                    ;;
+                show)
+                    cmd_audit_show "$@"
+                    ;;
+                clear)
+                    cmd_audit_clear
+                    ;;
+                path)
+                    cmd_audit_path
+                    ;;
+                "")
+                    echo "Error: No audit command specified" >&2
+                    usage
+                    exit 1
+                    ;;
+                *)
+                    echo "Error: Unknown audit command: $command" >&2
+                    usage
+                    exit 1
+                    ;;
+            esac
+            ;;
+        -h|--help|"")
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown category: $category" >&2
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

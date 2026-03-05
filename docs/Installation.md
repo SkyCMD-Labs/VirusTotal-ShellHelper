@@ -106,15 +106,43 @@ vt-check --notify /usr/bin/ls
 
 ## Uninstallation
 
+### Automated Uninstall (Recommended)
+
+```bash
+./uninstall.sh
+```
+
+The uninstaller will:
+1. Remove all installed scripts (`vt-check`, `vt-actions.sh`, `vt-manage`)
+2. Remove context menu integrations for all file managers
+3. Optionally remove quarantine files and audit logs
+4. Optionally remove tmpfs mount (if configured)
+
+### Manual Uninstallation
+
+If you need to remove components manually:
+
 ```bash
 # Remove scripts
 rm ~/.local/bin/vt-check
+rm ~/.local/bin/vt-actions.sh
+rm ~/.local/bin/vt-manage
 
 # Remove context menus (varies by file manager)
 rm ~/.local/share/kio/servicemenus/vt-check.desktop          # Dolphin
 rm ~/.local/share/nemo/actions/vt-check*.nemo_action         # Nemo
 rm ~/.local/share/nautilus/scripts/Scan\ with\ VirusTotal*   # Nautilus
 # For Thunar, manually edit ~/.config/Thunar/uca.xml
+
+# Remove quarantine and audit data (optional)
+rm -rf ~/.local/share/virustotal-quarantine
+rm -rf ~/.local/share/virustotal-shell
+
+# Remove tmpfs mount (if configured)
+sudo systemctl disable home-$(systemd-escape "$USER")-.local-share-virustotal\\x2dquarantine.mount
+sudo systemctl stop home-$(systemd-escape "$USER")-.local-share-virustotal\\x2dquarantine.mount
+sudo rm /etc/systemd/system/home-$(systemd-escape "$USER")-.local-share-virustotal\\x2dquarantine.mount
+sudo systemctl daemon-reload
 ```
 
 The `vt` CLI and its config (`~/.vt.toml`) can be kept for other uses.

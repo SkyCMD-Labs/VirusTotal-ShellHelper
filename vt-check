@@ -507,12 +507,16 @@ main() {
         
         if [[ "$status" == "Clean" ]]; then
             echo -e "Status:       ${GREEN}${status}${NC}"
+            # Log scan result
+            log_audit "scan" "$filepath" "clean" "malicious=$malicious,suspicious=$suspicious,harmless=$harmless,undetected=$undetected,vt_url=$url,scan_type=existing"
             # Tag file as clean
             tag_file_clean "$filepath"
         else
             echo -e "Status:       ${RED}${status}${NC}"
+            # Log scan result
+            log_audit "scan" "$filepath" "malicious" "malicious=$malicious,suspicious=$suspicious,harmless=$harmless,undetected=$undetected,vt_url=$url,scan_type=existing"
             # Tag file as malicious and lock it down
-            tag_file_malicious "$filepath"
+            tag_file_malicious "$filepath" "$malicious"
             
             # Auto-quarantine if flag is set
             if [[ "$auto_quarantine" == "true" ]]; then
@@ -599,12 +603,16 @@ main() {
                 
                 if [[ "$status" == "Clean" ]]; then
                     echo -e "Status:       ${GREEN}${status}${NC}"
+                    # Log scan result
+                    log_audit "scan" "$filepath" "clean" "malicious=$malicious,suspicious=$suspicious,harmless=$harmless,undetected=$undetected,vt_url=$url,scan_type=uploaded"
                     # Tag file as clean
                     tag_file_clean "$filepath"
                 else
                     echo -e "Status:       ${RED}${status}${NC}"
+                    # Log scan result
+                    log_audit "scan" "$filepath" "malicious" "malicious=$malicious,suspicious=$suspicious,harmless=$harmless,undetected=$undetected,vt_url=$url,scan_type=uploaded"
                     # Tag file as malicious and lock it down
-                    tag_file_malicious "$filepath"
+                    tag_file_malicious "$filepath" "$malicious"
                     
                     # Auto-quarantine if flag is set
                     if [[ "$auto_quarantine" == "true" ]]; then

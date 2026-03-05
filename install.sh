@@ -348,14 +348,14 @@ install_vt_check() {
         echo -e "${WARN} vt-actions.sh not found, skipping..."
     fi
     
-    # Install vt-quarantine
-    local quarantine_script="${SCRIPT_DIR}/vt-quarantine"
-    if [[ -f "$quarantine_script" ]]; then
-        cp "$quarantine_script" "${INSTALL_DIR}/vt-quarantine"
-        chmod +x "${INSTALL_DIR}/vt-quarantine"
-        echo -e "${OK} vt-quarantine installed to ${INSTALL_DIR}/vt-quarantine"
+    # Install vt-manage
+    local manage_script="${SCRIPT_DIR}/vt-manage"
+    if [[ -f "$manage_script" ]]; then
+        cp "$manage_script" "${INSTALL_DIR}/vt-manage"
+        chmod +x "${INSTALL_DIR}/vt-manage"
+        echo -e "${OK} vt-manage installed to ${INSTALL_DIR}/vt-manage"
     else
-        echo -e "${WARN} vt-quarantine not found, skipping..."
+        echo -e "${WARN} vt-manage not found, skipping..."
     fi
     
     return 0
@@ -811,6 +811,24 @@ main() {
         fi
     fi
     
+    # Optional: Setup tmpfs mount for quarantine
+    if [[ -f "${SCRIPT_DIR}/setup-system-mount.sh" ]]; then
+        echo ""
+        echo -e "${INFO} Optional: Set up tmpfs mount with noexec for enhanced quarantine isolation"
+        echo "    This creates a system-level mount that persists across reboots."
+        echo "    Files in quarantine will be lost on reboot (audit logs preserved)."
+        echo ""
+        if prompt_yes_no "Run setup-system-mount.sh to configure tmpfs quarantine?"; then
+            echo ""
+            echo -e "${INFO} Running setup script (requires sudo)..."
+            sudo "${SCRIPT_DIR}/setup-system-mount.sh"
+        else
+            echo -e "${INFO} Skipping tmpfs mount setup"
+            echo "    Quarantine will use regular directory storage."
+            echo "    Run './setup-system-mount.sh' manually later if desired."
+        fi
+    fi
+    
     # Final instructions
     print_header "Next Steps"
     
@@ -843,10 +861,11 @@ main() {
     fi
     
     echo "    Additional commands:"
-    echo -e "    ${BOLD}vt-quarantine list${NC}      - View quarantined files"
-    echo -e "    ${BOLD}vt-quarantine open${NC}      - Open quarantine folder"
+    echo -e "    ${BOLD}vt-manage quarantine list${NC}   - View quarantined files"
+    echo -e "    ${BOLD}vt-manage quarantine open${NC}   - Open quarantine folder"
+    echo -e "    ${BOLD}vt-manage audit list${NC}        - View audit logs"
     echo ""
-    echo "    See QUARANTINE.md for details on tagging and quarantine features"
+    echo "    See docs/ for details on tagging, quarantine, and audit features"
     echo ""
     
     echo -e "${GREEN}Installation complete!${NC}"

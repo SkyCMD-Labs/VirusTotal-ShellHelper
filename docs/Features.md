@@ -19,7 +19,7 @@ Your VirusTotal Shell Helper now automatically provides **visual feedback** for 
 - One-click quarantine from notification
 - Isolated directory: `~/.local/share/virustotal-quarantine`
 - Read-only, no execute (chmod 400)
-- Manage with `vt-quarantine` command
+- Manage with `vt-manage` command
 
 ## 🚀 Quick Start
 
@@ -35,8 +35,8 @@ Your VirusTotal Shell Helper now automatically provides **visual feedback** for 
 
 3. **View quarantined files:**
    ```bash
-   vt-quarantine list
-   vt-quarantine open    # Opens in Dolphin
+   vt-manage quarantine list
+   vt-manage quarantine open    # Opens in Dolphin
    ```
 
 4. **See tags in Dolphin:**
@@ -58,7 +58,7 @@ Your VirusTotal Shell Helper now automatically provides **visual feedback** for 
 The installer now includes:
 - `vt-check` - Main scanning tool
 - `vt-actions.sh` - Tagging & quarantine functions
-- `vt-quarantine` - Quarantine management CLI
+- `vt-manage` - Quarantine and audit management CLI
 
 ## 🏷️ Dependencies
 
@@ -86,10 +86,10 @@ vt-check --notify suspicious.exe
 # - Click "Quarantine File" button
 
 # Later, review quarantine:
-vt-quarantine list
+vt-manage quarantine list
 
 # Delete permanently:
-vt-quarantine delete ~/.local/share/virustotal-quarantine/suspicious.exe
+vt-manage quarantine delete <hash-or-filename>
 ```
 
 ## ⚡ What Happens Automatically

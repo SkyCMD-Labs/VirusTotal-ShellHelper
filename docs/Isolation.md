@@ -87,7 +87,7 @@ sudo systemctl start "$UNIT_NAME"
 
 ```bash
 # Check mount status
-systemctl --user status vt-quarantine-noexec.mount
+sudo systemctl status "$(systemd-escape -p --suffix=mount "$HOME/.local/share/virustotal-quarantine")"
 
 # Verify mount options
 findmnt ~/.local/share/virustotal-quarantine
@@ -106,17 +106,20 @@ Expected output: `bash: ./test.sh: Permission denied`
 ### Management
 
 ```bash
-# Start/mount
-systemctl --user start vt-quarantine-noexec.mount
+# Get unit name
+UNIT_NAME="$(systemd-escape -p --suffix=mount "$HOME/.local/share/virustotal-quarantine")"
 
-# Stop/unmount (to access backing storage or delete)
-systemctl --user stop vt-quarantine-noexec.mount
+# Start/mount
+sudo systemctl start "$UNIT_NAME"
+
+# Stop/unmount
+sudo systemctl stop "$UNIT_NAME"
 
 # Status
-systemctl --user status vt-quarantine-noexec.mount
+sudo systemctl status "$UNIT_NAME"
 
 # Disable auto-mount
-systemctl --user disable vt-quarantine-noexec.mount
+sudo systemctl disable "$UNIT_NAME"
 ```
 
 ## 🛡️ Alternative: AppArmor (Advanced)
@@ -170,4 +173,4 @@ Run: `./setup-quarantine-mount.sh` and choose option 2.
    - Extract with archive tools
    - Analyze with `strings`, `file`, etc.
 
-4. **Compatibility:** Works with all existing vt-check, vt-quarantine commands. No changes needed.
+4. **Compatibility:** Works with all existing vt-check, vt-manage commands. No changes needed.
