@@ -25,20 +25,27 @@ jobs:
       
       - name: Sync docs to wiki
         run: |
-          # Copy all markdown files from docs/ to wiki
-          cp docs/*.md wiki-repo/
+          # Configure git globally first
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           cd wiki-repo
-          
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # Initialize if new wiki
           git init 2>/dev/null || true
           
-          # Add all changes
-          git add .
+          cd ..
+          
+          # Remove all existing markdown files to avoid stale pages
+          find wiki-repo -maxdepth 1 -name "*.md" -delete
+          
+          # Copy current docs to wiki
+          cp docs/*.md wiki-repo/
+          
+          cd wiki-repo
+          
+          # Stage all changes (additions, modifications, deletions)
+          git add -A
           
           # Commit if there are changes
           if git diff-index --quiet HEAD -- 2>/dev/null; then
