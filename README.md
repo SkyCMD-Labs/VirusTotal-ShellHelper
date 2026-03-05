@@ -77,7 +77,8 @@ See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTo
 
 ## Privacy & Security
 
-⚠️ **Important:** Files uploaded to VirusTotal are shared with security researchers and antivirus companies. **Do not upload sensitive or confidential files.**
+> [!WARNING]
+> Files uploaded to VirusTotal are shared with security researchers and antivirus companies. **Do not upload sensitive or confidential files.**
 
 ## Contributing
 
