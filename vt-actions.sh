@@ -329,10 +329,10 @@ list_quarantine() {
     echo "║                            QUARANTINED FILES                                 ║"
     echo "╠══════════════════════════════════════════════════════════════════════════════╣"
     if [[ "$fs_type" == "tmpfs" ]]; then
-        echo "║  ⚠️  Storage: TMPFS (files will be LOST on reboot)                          ║"
+        printf "║  %-75s║\n" "Storage: TMPFS (files will be LOST on reboot)"
         echo "╠══════════════════════════════════════════════════════════════════════════════╣"
     fi
-    printf "║  Location: %-67s║\n" "$QUARANTINE_DIR"
+    printf "║  %-75s║\n" "Location: $QUARANTINE_DIR"
     echo "╚══════════════════════════════════════════════════════════════════════════════╝"
     
     local count=0
@@ -378,11 +378,12 @@ list_quarantine() {
             
             # Print formatted entry
             echo ""
-            printf "[%d] \033[1m%s\033[0m\n" "$count" "$original_file"
-            printf "    Size:         %s\n" "$size"
-            printf "    Hash:         %s\n" "$file_hash"
-            printf "    Quarantined:  %s\n" "$quarantine_time"
-            printf "    From:         %s\n" "$original_path"
+            printf "[%d] \\033[1m%s\\033[0m\\n" "$count" "$original_file"
+            printf "    Size:         %s\\n" "$size"
+            printf "    Hash:         %s\\n" "$file_hash"
+            printf "    Quarantined:  %s\\n" "$quarantine_time"
+            printf "    From:         %s\\n" "$original_path"
+        fi
     done
     
     if [[ $count -eq 0 ]]; then
