@@ -1,5 +1,3 @@
-# How It Works
-
 ## Overview
 
 vt-check is a bash wrapper around the official [VirusTotal CLI](https://github.com/VirusTotal/vt-cli) that provides a streamlined workflow for checking files and desktop notifications.
@@ -106,7 +104,10 @@ We just orchestrate the workflow and add notifications.
 
 ## Security Considerations
 
-- **Files are uploaded to VirusTotal** — they become available to premium users
-- **Don't scan sensitive/private files** — use hash-only lookup services for those
-- **API key is stored locally** — in `~/.vt.toml` by the vt CLI
+> [!WARNING]
+> Files uploaded to VirusTotal are shared with security researchers and antivirus companies.
+> **Do not upload sensitive, confidential, or personally identifiable files.**
+
+- **API key is stored locally** in `~/.vt.toml` by the vt CLI
 - **No data leaves your machine** except to VirusTotal's API
+- For sensitive files, use hash-only lookup services instead

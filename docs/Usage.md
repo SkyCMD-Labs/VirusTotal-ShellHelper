@@ -1,5 +1,3 @@
-# Usage
-
 ## Command Line
 
 ```bash
@@ -37,6 +35,9 @@ Right-click any file in your file manager:
 
 - **Scan with VirusTotal** — full scan, waits for results
 - **Scan with VirusTotal (quick)** — uploads and returns immediately
+
+> [!NOTE]
+> Context menu names may vary slightly depending on your file manager, but functionality is the same.
 
 ## Output
 

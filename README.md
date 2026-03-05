@@ -69,11 +69,11 @@ Contributions and testing on other platforms welcome!
 
 See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki) for detailed documentation:
 
-- [Installation](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/installation) — setup guide
-- [Usage](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/usage) — CLI options and examples
-- [How It Works](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/how-it-works) — technical overview
-- [File Managers](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/file-managers) — context menu setup
-- [Troubleshooting](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/troubleshooting) — common issues
+- [Installation](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Installation) — setup guide
+- [Usage](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Usage) — CLI options and examples
+- [How It Works](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/How-It-Works) — technical overview
+- [File Managers](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/File-Managers) — context menu setup
+- [Troubleshooting](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Troubleshooting) — common issues
 
 ## Privacy & Security
 

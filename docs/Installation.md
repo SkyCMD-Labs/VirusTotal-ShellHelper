@@ -1,5 +1,3 @@
-# Installation
-
 ## Quick Install
 
 ```bash
@@ -10,7 +8,10 @@ cd VirusTotal-ShellHelper
 
 The installer handles everything interactively.
 
-## What the Installer Does
+> [!TIP]
+> The installer will automatically detect your system and download the vt CLI if needed.
+
+## Manual Installation
 
 1. **System Check** — detects your architecture, distro, desktop environment, and file manager
 2. **Dependency Check** — verifies required tools are installed
@@ -59,8 +60,10 @@ mv vt ~/.local/bin/
 vt init
 ```
 
-You'll be prompted for your API key. Get one free at:
-https://www.virustotal.com/gui/my-apikey
+> [!IMPORTANT]
+> You must run `vt init` to configure your API key before using vt-check.
+
+Get a free API key at: https://www.virustotal.com/gui/my-apikey
 
 ### 4. Install vt-check
 

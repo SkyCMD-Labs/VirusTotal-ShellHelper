@@ -1,10 +1,11 @@
-# Troubleshooting
-
 ## Common Issues
 
 ### Permission Denied
 
 **Symptom:** Error when running `vt-check` or context menu action fails silently.
+
+> [!TIP]
+> After installation or updates, always ensure scripts are executable with `chmod +x`.
 
 **Solution:**
 ```bash
@@ -53,7 +54,8 @@ Get a free API key at: https://www.virustotal.com/gui/my-apikey
 
 **Symptom:** `QuotaExceededError`
 
-**Cause:** Free VirusTotal API keys have rate limits (4 requests/minute, 500/day).
+> [!NOTE]
+> Free VirusTotal API keys have rate limits: 4 requests/minute, 500 requests/day.
 
 **Solution:** Wait a minute and try again, or upgrade to a premium API key.
 

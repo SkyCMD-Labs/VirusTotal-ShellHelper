@@ -1,6 +1,7 @@
-# File Manager Integration
-
 The installer automatically sets up context menus for supported file managers. This document covers manual setup and customization.
+
+> [!TIP]
+> Most file managers require restarting or logging out/in for changes to take effect.
 
 ## Supported File Managers
 
