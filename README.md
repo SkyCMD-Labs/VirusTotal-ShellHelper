@@ -82,7 +82,7 @@ See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTo
 
 ## Contributing
 
-Contributions and testing on other platforms welcome! Please open an issue or PR.
+Contributions and testing on other platforms welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
