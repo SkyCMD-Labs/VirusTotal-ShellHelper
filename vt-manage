@@ -65,15 +65,19 @@ cmd_restore() {
     
     if [[ -z "$file" ]]; then
         echo "Error: No file specified" >&2
-        echo "Usage: vt-quarantine restore <file>" >&2
+        echo "Usage: vt-manage quarantine restore <file-or-hash>" >&2
         exit 1
     fi
     
-    # If not a full path, search in quarantine directory by matching filename in audit logs
+    # If not a full path, search in quarantine directory
     if [[ ! -f "$file" ]]; then
         local found=""
-        # Search audit logs for matching filename
-        if command -v jq &>/dev/null; then
+        
+        # First, check if it's a hash (files are stored as full hash)
+        if [[ -f "$QUARANTINE_DIR/$file" ]]; then
+            found="$QUARANTINE_DIR/$file"
+        # Otherwise, search audit logs for matching filename
+        elif command -v jq &>/dev/null; then
             for log in "$AUDIT_LOG_DIR"/*.json; do
                 if [[ -f "$log" ]]; then
                     local stored_filename
@@ -94,7 +98,7 @@ cmd_restore() {
             file="$found"
         else
             echo "Error: File not found: $file" >&2
-            echo "Use 'vt-quarantine list' to see available files" >&2
+            echo "Use 'vt-manage quarantine list' to see available files" >&2
             exit 1
         fi
     fi
@@ -126,15 +130,19 @@ cmd_delete() {
     
     if [[ -z "$file" ]]; then
         echo "Error: No file specified" >&2
-        echo "Usage: vt-quarantine delete <file>" >&2
+        echo "Usage: vt-manage quarantine delete <file-or-hash>" >&2
         exit 1
     fi
     
-    # If not a full path, search in quarantine directory by matching filename in audit logs
+    # If not a full path, search in quarantine directory
     if [[ ! -f "$file" ]]; then
         local found=""
-        # Search audit logs for matching filename
-        if command -v jq &>/dev/null; then
+        
+        # First, check if it's a hash (files are stored as full hash)
+        if [[ -f "$QUARANTINE_DIR/$file" ]]; then
+            found="$QUARANTINE_DIR/$file"
+        # Otherwise, search audit logs for matching filename
+        elif command -v jq &>/dev/null; then
             for log in "$AUDIT_LOG_DIR"/*.json; do
                 if [[ -f "$log" ]]; then
                     local stored_filename
@@ -155,7 +163,7 @@ cmd_delete() {
             file="$found"
         else
             echo "Error: File not found: $file" >&2
-            echo "Use 'vt-quarantine list' to see available files" >&2
+            echo "Use 'vt-manage quarantine list' to see available files" >&2
             exit 1
         fi
     fi
