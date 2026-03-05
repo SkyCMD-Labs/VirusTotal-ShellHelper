@@ -5,12 +5,26 @@
 # Usage: vt-check [OPTIONS] <file>
 #
 # Options:
-#   --no-wait    Don't wait for analysis if file needs to be uploaded
-#   --notify     Show desktop notifications for progress and results
-#   -h, --help   Show this help message
+#   --no-wait       Don't wait for analysis if file needs to be uploaded
+#   --notify        Show desktop notifications for progress and results
+#   --quarantine    Automatically quarantine if malicious (no prompt)
+#   -h, --help      Show this help message
 #
 
 set -o pipefail
+
+# Source action functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/vt-actions.sh" ]]; then
+    source "$SCRIPT_DIR/vt-actions.sh"
+elif [[ -f "$HOME/.local/bin/vt-actions.sh" ]]; then
+    source "$HOME/.local/bin/vt-actions.sh"
+else
+    # Actions not available, define stubs
+    tag_file_clean() { :; }
+    tag_file_malicious() { :; }
+    quarantine_file() { echo ""; return 1; }
+fi
 
 VERSION="1.0.0"
 VT_URL_TEMPLATE="https://www.virustotal.com/gui/file"
@@ -50,13 +64,15 @@ vt-check v${VERSION} - Check file cleanliness via VirusTotal
 Usage: vt-check [OPTIONS] <file>
 
 Options:
-  --no-wait    Don't wait for analysis if file needs to be uploaded
-  --notify     Show desktop notifications for progress and results
-  -h, --help   Show this help message
+  --no-wait       Don't wait for analysis if file needs to be uploaded
+  --notify        Show desktop notifications for progress and results
+  --quarantine    Automatically quarantine if malicious (no prompt)
+  -h, --help      Show this help message
 
 Examples:
   vt-check suspicious.exe
   vt-check --notify malware.bin
+  vt-check --notify --quarantine untrusted.exe
   vt-check --no-wait --notify largefile.iso
 EOF
 }
@@ -137,12 +153,13 @@ _notify_zenity() {
 }
 
 # Send final notification with action button
-# Args: title, message, urgency, url
+# Args: title, message, urgency, url, filepath
 send_result_notification() {
     local title="$1"
     local message="$2"
     local urgency="${3:-normal}"
     local url="$4"
+    local filepath="$5"
     
     if [[ "$NOTIFY_ENABLED" != "true" ]] || [[ -z "$NOTIFY_BACKEND" ]]; then
         return
@@ -150,10 +167,10 @@ send_result_notification() {
     
     case "$NOTIFY_BACKEND" in
         notify-send)
-            _result_libnotify "$title" "$message" "$urgency" "$url"
+            _result_libnotify "$title" "$message" "$urgency" "$url" "$filepath"
             ;;
         dunstify)
-            _result_dunstify "$title" "$message" "$urgency" "$url"
+            _result_dunstify "$title" "$message" "$urgency" "$url" "$filepath"
             ;;
         kdialog)
             _result_kdialog "$title" "$message" "$url"
@@ -166,7 +183,7 @@ send_result_notification() {
 
 # notify-send result with action button
 _result_libnotify() {
-    local title="$1" message="$2" urgency="$3" url="$4"
+    local title="$1" message="$2" urgency="$3" url="$4" filepath="$5"
     local icon="security-medium"
     [[ "$urgency" == "critical" ]] && icon="security-low"
     
@@ -179,6 +196,15 @@ _result_libnotify() {
         "-i" "$icon"
     )
     
+    # Add quarantine action for malicious files (only if quarantine is available)
+    if [[ "$urgency" == "critical" ]]; then
+        # Check if quarantine directory exists and is writable
+        local quarantine_dir="${XDG_DATA_HOME:-$HOME/.local/share}/virustotal-quarantine"
+        if [[ -d "$quarantine_dir" ]] && [[ -w "$quarantine_dir" ]]; then
+            args+=("-A" "quarantine=Quarantine File")
+        fi
+    fi
+    
     if [[ -n "$NOTIFY_ID" ]]; then
         args+=("-r" "$NOTIFY_ID")
     fi
@@ -189,12 +215,22 @@ _result_libnotify() {
     
     if [[ "$action" == "open" ]] && [[ -n "$url" ]]; then
         xdg-open "$url" 2>/dev/null &
+    elif [[ "$action" == "quarantine" ]] && [[ -n "$filepath" ]] && [[ -f "$filepath" ]]; then
+        local quarantine_result
+        quarantine_result=$(quarantine_file "$filepath")
+        if [[ -n "$quarantine_result" ]]; then
+            notify-send -u normal -a "VirusTotal Check" -i "security-high" \
+                "File Quarantined" "Moved to: $quarantine_result"
+        else
+            notify-send -u critical -a "VirusTotal Check" -i "dialog-error" \
+                "Quarantine Failed" "Could not quarantine file"
+        fi
     fi
 }
 
 # dunstify result with action button
 _result_dunstify() {
-    local title="$1" message="$2" urgency="$3" url="$4"
+    local title="$1" message="$2" urgency="$3" url="$4" filepath="$5"
     local icon="security-medium"
     [[ "$urgency" == "critical" ]] && icon="security-low"
     
@@ -207,6 +243,15 @@ _result_dunstify() {
         "-A" "open,View Results in Browser"
     )
     
+    # Add quarantine action for malicious files (only if quarantine is available)
+    if [[ "$urgency" == "critical" ]]; then
+        # Check if quarantine directory exists and is writable
+        local quarantine_dir="${XDG_DATA_HOME:-$HOME/.local/share}/virustotal-quarantine"
+        if [[ -d "$quarantine_dir" ]] && [[ -w "$quarantine_dir" ]]; then
+            args+=("-A" "quarantine,Quarantine File")
+        fi
+    fi
+    
     if [[ -n "$NOTIFY_ID" ]]; then
         args+=("-r" "$NOTIFY_ID")
     fi
@@ -217,6 +262,16 @@ _result_dunstify() {
     
     if [[ "$action" == "open" ]] && [[ -n "$url" ]]; then
         xdg-open "$url" 2>/dev/null &
+    elif [[ "$action" == "quarantine" ]] && [[ -n "$filepath" ]] && [[ -f "$filepath" ]]; then
+        local quarantine_result
+        quarantine_result=$(quarantine_file "$filepath")
+        if [[ -n "$quarantine_result" ]]; then
+            dunstify -u normal -a "VirusTotal Check" -i "security-high" \
+                "File Quarantined" "Moved to: $quarantine_result"
+        else
+            dunstify -u critical -a "VirusTotal Check" -i "dialog-error" \
+                "Quarantine Failed" "Could not quarantine file"
+        fi
     fi
 }
 
@@ -326,6 +381,7 @@ get_analysis() {
 main() {
     local file=""
     local wait=true
+    local auto_quarantine=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -340,6 +396,10 @@ main() {
                 if [[ -z "$NOTIFY_BACKEND" ]]; then
                     echo -e "${YELLOW}Warning: No notification backend found (notify-send, dunstify, kdialog, or zenity)${NC}" >&2
                 fi
+                shift
+                ;;
+            --quarantine)
+                auto_quarantine=true
                 shift
                 ;;
             -h|--help)
@@ -447,8 +507,25 @@ main() {
         
         if [[ "$status" == "Clean" ]]; then
             echo -e "Status:       ${GREEN}${status}${NC}"
+            # Tag file as clean
+            tag_file_clean "$filepath"
         else
             echo -e "Status:       ${RED}${status}${NC}"
+            # Tag file as malicious and lock it down
+            tag_file_malicious "$filepath"
+            
+            # Auto-quarantine if flag is set
+            if [[ "$auto_quarantine" == "true" ]]; then
+                echo -e "${BLUE}Auto-quarantining malicious file...${NC}"
+                local quarantined
+                quarantined=$(quarantine_file "$filepath")
+                if [[ -n "$quarantined" ]]; then
+                    echo -e "${GREEN}✓ File quarantined: ${quarantined}${NC}"
+                    filepath="$quarantined"
+                else
+                    echo -e "${RED}✗ Failed to quarantine file${NC}"
+                fi
+            fi
         fi
         echo -e "URL:          ${BLUE}${url}${NC}"
         
@@ -460,7 +537,7 @@ main() {
         notify_body=$(printf "<b>File:</b>\n%s\n<b>Type:</b> %s\n<b>Last scanned:</b> %s\n<b>Status:</b> %s" \
             "$filepath" "$type_tag" "$formatted_date" "$status")
         
-        send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url"
+        send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url" "$filepath"
         
     else
         # File not found, need to upload
@@ -522,8 +599,25 @@ main() {
                 
                 if [[ "$status" == "Clean" ]]; then
                     echo -e "Status:       ${GREEN}${status}${NC}"
+                    # Tag file as clean
+                    tag_file_clean "$filepath"
                 else
                     echo -e "Status:       ${RED}${status}${NC}"
+                    # Tag file as malicious and lock it down
+                    tag_file_malicious "$filepath"
+                    
+                    # Auto-quarantine if flag is set
+                    if [[ "$auto_quarantine" == "true" ]]; then
+                        echo -e "${BLUE}Auto-quarantining malicious file...${NC}"
+                        local quarantined
+                        quarantined=$(quarantine_file "$filepath")
+                        if [[ -n "$quarantined" ]]; then
+                            echo -e "${GREEN}✓ File quarantined: ${quarantined}${NC}"
+                            filepath="$quarantined"
+                        else
+                            echo -e "${RED}✗ Failed to quarantine file${NC}"
+                        fi
+                    fi
                 fi
                 echo -e "URL:          ${BLUE}${url}${NC}"
                 
@@ -535,7 +629,7 @@ main() {
                 notify_body=$(printf "<b>File:</b>\n%s\n<b>Type:</b> %s\n<b>Status:</b> %s" \
                     "$filepath" "$type_tag" "$status")
                 
-                send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url"
+                send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url" "$filepath"
             else
                 echo -e "${YELLOW}Analysis submitted. Results will be available shortly.${NC}"
                 echo -e "URL: ${BLUE}${url}${NC}"

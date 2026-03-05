@@ -13,6 +13,9 @@ A lightweight shell script to check file cleanliness via VirusTotal. No Python, 
 - **Auto-upload** — uploads new files for analysis if not found
 - **Desktop notifications** — supports notify-send, dunstify, kdialog, zenity
 - **File manager integration** — right-click context menu for supported file managers
+- **Auto-tagging** — tags files as clean/malicious (visible in KDE Dolphin)
+- **Auto-lockdown** — removes execute/write permissions from malicious files
+- **One-click quarantine** — isolate malicious files with noexec protection
 
 ## Quick Start
 
@@ -73,6 +76,9 @@ See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTo
 - [Usage](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Usage) — CLI options and examples
 - [How It Works](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/How-It-Works) — technical overview
 - [File Managers](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/File-Managers) — context menu setup
+- [Quarantine & Tagging](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Quarantine-and-Tagging) — file tagging and quarantine features
+- [Isolation](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Isolation) — noexec mount setup for enhanced security
+- [Features](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Features) — quick reference guide
 - [Troubleshooting](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/Troubleshooting) — common issues
 
 ## Privacy & Security

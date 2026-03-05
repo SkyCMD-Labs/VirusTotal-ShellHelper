@@ -322,10 +322,11 @@ install_vt_cli() {
 }
 
 install_vt_check() {
-    print_header "Installing vt-check"
+    print_header "Installing vt-check and related scripts"
     
     mkdir -p "$INSTALL_DIR"
     
+    # Install vt-check
     local source_script="${SCRIPT_DIR}/vt-check"
     
     if [[ ! -f "$source_script" ]]; then
@@ -335,8 +336,28 @@ install_vt_check() {
     
     cp "$source_script" "${INSTALL_DIR}/vt-check"
     chmod +x "${INSTALL_DIR}/vt-check"
-    
     echo -e "${OK} vt-check installed to ${INSTALL_DIR}/vt-check"
+    
+    # Install vt-actions.sh
+    local actions_script="${SCRIPT_DIR}/vt-actions.sh"
+    if [[ -f "$actions_script" ]]; then
+        cp "$actions_script" "${INSTALL_DIR}/vt-actions.sh"
+        chmod +x "${INSTALL_DIR}/vt-actions.sh"
+        echo -e "${OK} vt-actions.sh installed to ${INSTALL_DIR}/vt-actions.sh"
+    else
+        echo -e "${WARN} vt-actions.sh not found, skipping..."
+    fi
+    
+    # Install vt-quarantine
+    local quarantine_script="${SCRIPT_DIR}/vt-quarantine"
+    if [[ -f "$quarantine_script" ]]; then
+        cp "$quarantine_script" "${INSTALL_DIR}/vt-quarantine"
+        chmod +x "${INSTALL_DIR}/vt-quarantine"
+        echo -e "${OK} vt-quarantine installed to ${INSTALL_DIR}/vt-quarantine"
+    else
+        echo -e "${WARN} vt-quarantine not found, skipping..."
+    fi
+    
     return 0
 }
 
@@ -702,6 +723,22 @@ run_system_check() {
         echo -e "${WARN} xdg-open: not found (browser links won't work)"
     fi
     
+    # Baloo (for KDE tagging)
+    if command -v balooctl6 &>/dev/null; then
+        echo -e "${OK} balooctl6: available (for file tagging)"
+    else
+        echo -e "${WARN} balooctl6: not found (file tagging won't work on KDE)"
+        echo "    Install with: sudo pacman -S baloo (Arch/CachyOS)"
+    fi
+    
+    # Extended attributes
+    if command -v setfattr &>/dev/null && command -v getfattr &>/dev/null; then
+        echo -e "${OK} xattr tools: available (for file metadata)"
+    else
+        echo -e "${WARN} xattr tools: not found (optional, for storing metadata)"
+        echo "    Install with: sudo pacman -S attr (Arch/CachyOS)"
+    fi
+    
     # Download tools
     local has_downloader=false
     if command -v curl &>/dev/null; then
@@ -804,6 +841,13 @@ main() {
         echo "    'Scan with VirusTotal'"
         echo ""
     fi
+    
+    echo "    Additional commands:"
+    echo -e "    ${BOLD}vt-quarantine list${NC}      - View quarantined files"
+    echo -e "    ${BOLD}vt-quarantine open${NC}      - Open quarantine folder"
+    echo ""
+    echo "    See QUARANTINE.md for details on tagging and quarantine features"
+    echo ""
     
     echo -e "${GREEN}Installation complete!${NC}"
 }
