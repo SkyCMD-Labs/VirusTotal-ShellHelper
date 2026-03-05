@@ -1,0 +1,58 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Clone wiki repository
+        run: |
+          git clone https://github.com/${{ github.repository }}.wiki.git wiki-repo || mkdir wiki-repo
+      
+      - name: Sync docs to wiki
+        run: |
+          # Copy all markdown files from docs/ to wiki
+          cp docs/*.md wiki-repo/
+          
+          cd wiki-repo
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Initialize if new wiki
+          git init 2>/dev/null || true
+          
+          # Add all changes
+          git add .
+          
+          # Commit if there are changes
+          if git diff-index --quiet HEAD -- 2>/dev/null; then
+            echo "No changes to wiki"
+          else
+            git commit -m "Sync documentation from docs/ folder
+            
+            Auto-synced from commit: ${{ github.sha }}
+            Triggered by: ${{ github.actor }}"
+            
+            # Push to wiki
+            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git HEAD:master --force
+          fi
+      
+      - name: Report sync status
+        if: success()
+        run: echo "✅ Wiki successfully synced with docs/ folder"

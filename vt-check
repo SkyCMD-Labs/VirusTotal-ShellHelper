@@ -1,0 +1,580 @@
+#!/usr/bin/env bash
+#
+# vt-check - Check file cleanliness via VirusTotal CLI
+#
+# Usage: vt-check [OPTIONS] <file>
+#
+# Options:
+#   --no-wait    Don't wait for analysis if file needs to be uploaded
+#   --notify     Show desktop notifications for progress and results
+#   -h, --help   Show this help message
+#
+
+set -o pipefail
+
+VERSION="1.0.0"
+VT_URL_TEMPLATE="https://www.virustotal.com/gui/file"
+
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Notification state
+NOTIFY_ENABLED=false
+NOTIFY_ID=""
+NOTIFY_BACKEND=""
+
+# Detect available notification backend
+# Priority: notify-send > dunstify > kdialog > zenity
+detect_notification_backend() {
+    if command -v notify-send &>/dev/null; then
+        NOTIFY_BACKEND="notify-send"
+    elif command -v dunstify &>/dev/null; then
+        NOTIFY_BACKEND="dunstify"
+    elif command -v kdialog &>/dev/null; then
+        NOTIFY_BACKEND="kdialog"
+    elif command -v zenity &>/dev/null; then
+        NOTIFY_BACKEND="zenity"
+    else
+        NOTIFY_BACKEND=""
+    fi
+}
+
+usage() {
+    cat <<EOF
+vt-check v${VERSION} - Check file cleanliness via VirusTotal
+
+Usage: vt-check [OPTIONS] <file>
+
+Options:
+  --no-wait    Don't wait for analysis if file needs to be uploaded
+  --notify     Show desktop notifications for progress and results
+  -h, --help   Show this help message
+
+Examples:
+  vt-check suspicious.exe
+  vt-check --notify malware.bin
+  vt-check --no-wait --notify largefile.iso
+EOF
+}
+
+# Send desktop notification
+# Args: title, message, urgency (normal|critical)
+send_notification() {
+    local title="$1"
+    local message="$2"
+    local urgency="${3:-normal}"
+    
+    if [[ "$NOTIFY_ENABLED" != "true" ]] || [[ -z "$NOTIFY_BACKEND" ]]; then
+        return
+    fi
+    
+    case "$NOTIFY_BACKEND" in
+        notify-send)
+            _notify_libnotify "$title" "$message" "$urgency"
+            ;;
+        dunstify)
+            _notify_dunstify "$title" "$message" "$urgency"
+            ;;
+        kdialog)
+            _notify_kdialog "$title" "$message" "$urgency"
+            ;;
+        zenity)
+            _notify_zenity "$title" "$message"
+            ;;
+    esac
+}
+
+# notify-send (libnotify) implementation
+_notify_libnotify() {
+    local title="$1" message="$2" urgency="$3"
+    local args=("notify-send" "-u" "$urgency" "-a" "VirusTotal Check" "-t" "0")
+    
+    if [[ -n "$NOTIFY_ID" ]]; then
+        args+=("-r" "$NOTIFY_ID")
+    fi
+    args+=("-p" "$title" "$message")
+    
+    NOTIFY_ID=$("${args[@]}" 2>/dev/null)
+}
+
+# dunstify implementation (Dunst notification daemon)
+_notify_dunstify() {
+    local title="$1" message="$2" urgency="$3"
+    local args=("dunstify" "-u" "$urgency" "-a" "VirusTotal Check" "-t" "0")
+    
+    if [[ -n "$NOTIFY_ID" ]]; then
+        args+=("-r" "$NOTIFY_ID")
+    else
+        # dunstify needs a numeric ID, generate one based on PID
+        NOTIFY_ID="$$"
+        args+=("-r" "$NOTIFY_ID")
+    fi
+    args+=("$title" "$message")
+    
+    "${args[@]}" 2>/dev/null
+}
+
+# kdialog implementation (KDE)
+_notify_kdialog() {
+    local title="$1" message="$2" urgency="$3"
+    local timeout=0
+    
+    # kdialog doesn't support replacing, just show new notification
+    # --passivepopup timeout is in seconds (0 = use default, can't be persistent)
+    kdialog --title "$title" --passivepopup "$message" 10 2>/dev/null &
+}
+
+# zenity implementation (GTK fallback)
+_notify_zenity() {
+    local title="$1" message="$2"
+    
+    # zenity notification is very basic, no replace support
+    zenity --notification --text="$title\n$message" 2>/dev/null &
+}
+
+# Send final notification with action button
+# Args: title, message, urgency, url
+send_result_notification() {
+    local title="$1"
+    local message="$2"
+    local urgency="${3:-normal}"
+    local url="$4"
+    
+    if [[ "$NOTIFY_ENABLED" != "true" ]] || [[ -z "$NOTIFY_BACKEND" ]]; then
+        return
+    fi
+    
+    case "$NOTIFY_BACKEND" in
+        notify-send)
+            _result_libnotify "$title" "$message" "$urgency" "$url"
+            ;;
+        dunstify)
+            _result_dunstify "$title" "$message" "$urgency" "$url"
+            ;;
+        kdialog)
+            _result_kdialog "$title" "$message" "$url"
+            ;;
+        zenity)
+            _result_zenity "$title" "$message" "$url"
+            ;;
+    esac
+}
+
+# notify-send result with action button
+_result_libnotify() {
+    local title="$1" message="$2" urgency="$3" url="$4"
+    local icon="security-medium"
+    [[ "$urgency" == "critical" ]] && icon="security-low"
+    
+    local args=(
+        "notify-send"
+        "-A" "open=View Results in Browser"
+        "-t" "0"
+        "-u" "$urgency"
+        "-a" "VirusTotal Check"
+        "-i" "$icon"
+    )
+    
+    if [[ -n "$NOTIFY_ID" ]]; then
+        args+=("-r" "$NOTIFY_ID")
+    fi
+    args+=("$title" "$message")
+    
+    local action
+    action=$("${args[@]}" 2>/dev/null)
+    
+    if [[ "$action" == "open" ]] && [[ -n "$url" ]]; then
+        xdg-open "$url" 2>/dev/null &
+    fi
+}
+
+# dunstify result with action button
+_result_dunstify() {
+    local title="$1" message="$2" urgency="$3" url="$4"
+    local icon="security-medium"
+    [[ "$urgency" == "critical" ]] && icon="security-low"
+    
+    local args=(
+        "dunstify"
+        "-u" "$urgency"
+        "-a" "VirusTotal Check"
+        "-i" "$icon"
+        "-t" "0"
+        "-A" "open,View Results in Browser"
+    )
+    
+    if [[ -n "$NOTIFY_ID" ]]; then
+        args+=("-r" "$NOTIFY_ID")
+    fi
+    args+=("$title" "$message")
+    
+    local action
+    action=$("${args[@]}" 2>/dev/null)
+    
+    if [[ "$action" == "open" ]] && [[ -n "$url" ]]; then
+        xdg-open "$url" 2>/dev/null &
+    fi
+}
+
+# kdialog result - no action button support, append URL to message
+_result_kdialog() {
+    local title="$1" message="$2" url="$3"
+    
+    # kdialog doesn't support actions, append URL
+    kdialog --title "$title" --passivepopup "$message\n\nResults: $url" 15 2>/dev/null &
+}
+
+# zenity result - no action button support, append URL to message
+_result_zenity() {
+    local title="$1" message="$2" url="$3"
+    
+    # Strip HTML tags for zenity (it doesn't support them)
+    local clean_message
+    clean_message=$(echo "$message" | sed 's/<[^>]*>//g')
+    
+    zenity --notification --text="$title\n$clean_message\n\nResults: $url" 2>/dev/null &
+}
+
+# Compute SHA256 hash of file
+compute_hash() {
+    local file="$1"
+    sha256sum "$file" | cut -d' ' -f1
+}
+
+# Format analysis stats into human-readable status
+# Args: malicious, suspicious, harmless, undetected
+format_status() {
+    local malicious="$1"
+    local suspicious="$2"
+    local harmless="$3"
+    local undetected="$4"
+    local total=$((malicious + suspicious + harmless + undetected))
+    
+    if [[ $malicious -gt 0 ]] || [[ $suspicious -gt 0 ]]; then
+        echo "Malicious ($((malicious + suspicious))/$total)"
+    else
+        echo "Clean"
+    fi
+}
+
+# Check if file exists in VirusTotal by hash
+# Sets VT_ERROR if an error occurs (other than not found)
+# Returns 0 if exists, 1 if not found or error
+check_existing() {
+    local hash="$1"
+    local result
+    local stderr_file
+    stderr_file=$(mktemp)
+    
+    result=$(vt file "$hash" --format json 2>"$stderr_file")
+    local exit_code=$?
+    local stderr_content
+    stderr_content=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+    
+    # Check for errors (but not "not found" which is expected)
+    if [[ $exit_code -ne 0 ]] && [[ -n "$stderr_content" ]]; then
+        # "NotFoundError" is expected when file doesn't exist
+        if [[ "$stderr_content" != *"NotFoundError"* ]]; then
+            VT_ERROR="$stderr_content"
+            return 1
+        fi
+    fi
+    
+    echo "$result"
+}
+
+# Upload and scan file
+# Args: file_path, wait (true/false)
+# Sets VT_ERROR if an error occurs
+scan_file() {
+    local file="$1"
+    local wait="$2"
+    local stderr_file
+    stderr_file=$(mktemp)
+    
+    local args=("vt" "scan" "file" "--format" "json")
+    [[ "$wait" == "true" ]] && args+=("--wait")
+    args+=("$file")
+    
+    local result
+    result=$("${args[@]}" 2>"$stderr_file")
+    local exit_code=$?
+    local stderr_content
+    stderr_content=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+    
+    if [[ $exit_code -ne 0 ]] && [[ -n "$stderr_content" ]]; then
+        VT_ERROR="$stderr_content"
+        return 1
+    fi
+    
+    echo "$result"
+}
+
+# Get analysis by ID
+get_analysis() {
+    local analysis_id="$1"
+    vt analysis "$analysis_id" --format json 2>/dev/null
+}
+
+# Main function
+main() {
+    local file=""
+    local wait=true
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --no-wait)
+                wait=false
+                shift
+                ;;
+            --notify)
+                NOTIFY_ENABLED=true
+                detect_notification_backend
+                if [[ -z "$NOTIFY_BACKEND" ]]; then
+                    echo -e "${YELLOW}Warning: No notification backend found (notify-send, dunstify, kdialog, or zenity)${NC}" >&2
+                fi
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -*)
+                echo -e "${RED}Error: Unknown option: $1${NC}" >&2
+                usage
+                exit 1
+                ;;
+            *)
+                file="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Validate input
+    if [[ -z "$file" ]]; then
+        echo -e "${RED}Error: No file specified${NC}" >&2
+        send_notification "VirusTotal Error" "No file specified" "critical"
+        usage
+        exit 1
+    fi
+    
+    if [[ ! -f "$file" ]]; then
+        echo -e "${RED}Error: File not found: $file${NC}" >&2
+        send_notification "VirusTotal Error" "File not found: $file" "critical"
+        exit 1
+    fi
+    
+    # Check for vt CLI
+    if ! command -v vt &>/dev/null; then
+        echo -e "${RED}Error: vt CLI not found. Please install it first.${NC}" >&2
+        send_notification "VirusTotal Error" "vt CLI not found" "critical"
+        exit 1
+    fi
+    
+    # Check for jq
+    if ! command -v jq &>/dev/null; then
+        echo -e "${RED}Error: jq not found. Please install it first.${NC}" >&2
+        send_notification "VirusTotal Error" "jq not found" "critical"
+        exit 1
+    fi
+    
+    local filename
+    filename=$(basename "$file")
+    local filepath
+    filepath=$(realpath "$file")
+    
+    # Compute hash
+    echo -e "${BLUE}Computing SHA256 hash...${NC}"
+    send_notification "VirusTotal Check" "Computing hash for $filename..."
+    
+    local hash
+    hash=$(compute_hash "$file")
+    local url="${VT_URL_TEMPLATE}/${hash}"
+    
+    echo -e "Hash: ${YELLOW}${hash}${NC}"
+    
+    # Check if file already exists in VT
+    echo -e "${BLUE}Checking VirusTotal database...${NC}"
+    send_notification "VirusTotal Check" "Checking if $filename is already analyzed..."
+    
+    local existing_result
+    VT_ERROR=""
+    existing_result=$(check_existing "$hash")
+    
+    # Check for API errors
+    if [[ -n "$VT_ERROR" ]]; then
+        echo -e "${RED}Error from VirusTotal: ${VT_ERROR}${NC}" >&2
+        send_notification "VirusTotal Error" "$VT_ERROR" "critical"
+        exit 1
+    fi
+    
+    if [[ -n "$existing_result" ]] && echo "$existing_result" | jq -e '.[0]' &>/dev/null; then
+        # File exists, show existing analysis
+        echo -e "${GREEN}File already analyzed in VirusTotal${NC}"
+        
+        local malicious suspicious harmless undetected type_tag last_date
+        malicious=$(echo "$existing_result" | jq -r '.[0].last_analysis_stats.malicious // 0')
+        suspicious=$(echo "$existing_result" | jq -r '.[0].last_analysis_stats.suspicious // 0')
+        harmless=$(echo "$existing_result" | jq -r '.[0].last_analysis_stats.harmless // 0')
+        undetected=$(echo "$existing_result" | jq -r '.[0].last_analysis_stats.undetected // 0')
+        type_tag=$(echo "$existing_result" | jq -r '.[0].type_tag // "unknown"')
+        last_date=$(echo "$existing_result" | jq -r '.[0].last_analysis_date // 0')
+        
+        # Convert timestamp to readable date
+        local formatted_date
+        if [[ "$last_date" != "0" ]] && [[ "$last_date" != "null" ]]; then
+            formatted_date=$(date -d "@$last_date" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "Unknown")
+        else
+            formatted_date="Unknown"
+        fi
+        
+        local status
+        status=$(format_status "$malicious" "$suspicious" "$harmless" "$undetected")
+        
+        # Terminal output
+        echo ""
+        echo -e "File:         ${YELLOW}${filepath}${NC}"
+        echo -e "Type:         ${type_tag}"
+        echo -e "Last scanned: ${formatted_date}"
+        
+        if [[ "$status" == "Clean" ]]; then
+            echo -e "Status:       ${GREEN}${status}${NC}"
+        else
+            echo -e "Status:       ${RED}${status}${NC}"
+        fi
+        echo -e "URL:          ${BLUE}${url}${NC}"
+        
+        # Notification
+        local urgency="normal"
+        [[ "$status" != "Clean" ]] && urgency="critical"
+        
+        local notify_body
+        notify_body=$(printf "<b>File:</b>\n%s\n<b>Type:</b> %s\n<b>Last scanned:</b> %s\n<b>Status:</b> %s" \
+            "$filepath" "$type_tag" "$formatted_date" "$status")
+        
+        send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url"
+        
+    else
+        # File not found, need to upload
+        echo -e "${YELLOW}File not found in VirusTotal, uploading...${NC}"
+        send_notification "VirusTotal Upload" "Uploading $filename..."
+        
+        if [[ "$wait" == "true" ]]; then
+            # Upload and wait for results
+            echo -e "${BLUE}Uploading and waiting for analysis (this may take a few minutes)...${NC}"
+            send_notification "VirusTotal Analysis" "Scanning $filename... This may take a few minutes."
+            
+            local scan_result
+            VT_ERROR=""
+            scan_result=$(scan_file "$file" "true")
+            
+            if [[ -n "$VT_ERROR" ]]; then
+                echo -e "${RED}Error from VirusTotal: ${VT_ERROR}${NC}" >&2
+                send_notification "VirusTotal Error" "$VT_ERROR" "critical"
+                exit 1
+            fi
+            
+            if [[ -z "$scan_result" ]]; then
+                echo -e "${RED}Error: Failed to upload file${NC}" >&2
+                send_notification "VirusTotal Error" "Failed to upload file" "critical"
+                exit 1
+            fi
+            
+            # After scan completes, fetch the full file info
+            echo -e "${BLUE}Fetching analysis results...${NC}"
+            
+            local file_result
+            file_result=$(check_existing "$hash")
+            
+            if [[ -n "$file_result" ]] && echo "$file_result" | jq -e '.[0]' &>/dev/null; then
+                local malicious suspicious harmless undetected type_tag last_date
+                malicious=$(echo "$file_result" | jq -r '.[0].last_analysis_stats.malicious // 0')
+                suspicious=$(echo "$file_result" | jq -r '.[0].last_analysis_stats.suspicious // 0')
+                harmless=$(echo "$file_result" | jq -r '.[0].last_analysis_stats.harmless // 0')
+                undetected=$(echo "$file_result" | jq -r '.[0].last_analysis_stats.undetected // 0')
+                type_tag=$(echo "$file_result" | jq -r '.[0].type_tag // "unknown"')
+                last_date=$(echo "$file_result" | jq -r '.[0].last_analysis_date // 0')
+                
+                local formatted_date
+                if [[ "$last_date" != "0" ]] && [[ "$last_date" != "null" ]]; then
+                    formatted_date=$(date -d "@$last_date" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "Unknown")
+                else
+                    formatted_date="Just now"
+                fi
+                
+                local status
+                status=$(format_status "$malicious" "$suspicious" "$harmless" "$undetected")
+                
+                # Terminal output
+                echo ""
+                echo -e "${GREEN}Analysis complete!${NC}"
+                echo -e "File:         ${YELLOW}${filepath}${NC}"
+                echo -e "Type:         ${type_tag}"
+                echo -e "Last scanned: ${formatted_date}"
+                
+                if [[ "$status" == "Clean" ]]; then
+                    echo -e "Status:       ${GREEN}${status}${NC}"
+                else
+                    echo -e "Status:       ${RED}${status}${NC}"
+                fi
+                echo -e "URL:          ${BLUE}${url}${NC}"
+                
+                # Notification
+                local urgency="normal"
+                [[ "$status" != "Clean" ]] && urgency="critical"
+                
+                local notify_body
+                notify_body=$(printf "<b>File:</b>\n%s\n<b>Type:</b> %s\n<b>Status:</b> %s" \
+                    "$filepath" "$type_tag" "$status")
+                
+                send_result_notification "VirusTotal — $status" "$notify_body" "$urgency" "$url"
+            else
+                echo -e "${YELLOW}Analysis submitted. Results will be available shortly.${NC}"
+                echo -e "URL: ${BLUE}${url}${NC}"
+                
+                send_result_notification "VirusTotal — Scan Started" \
+                    "$(printf "<b>File:</b>\n%s\n<b>Status:</b> Analysis in progress" "$filepath")" \
+                    "normal" "$url"
+            fi
+        else
+            # Upload without waiting
+            local scan_result
+            VT_ERROR=""
+            scan_result=$(scan_file "$file" "false")
+            
+            if [[ -n "$VT_ERROR" ]]; then
+                echo -e "${RED}Error from VirusTotal: ${VT_ERROR}${NC}" >&2
+                send_notification "VirusTotal Error" "$VT_ERROR" "critical"
+                exit 1
+            fi
+            
+            if [[ -z "$scan_result" ]]; then
+                echo -e "${RED}Error: Failed to upload file${NC}" >&2
+                send_notification "VirusTotal Error" "Failed to upload file" "critical"
+                exit 1
+            fi
+            
+            echo ""
+            echo -e "${GREEN}File uploaded successfully!${NC}"
+            echo -e "File: ${YELLOW}${filepath}${NC}"
+            echo -e "Status: ${YELLOW}Analysis in progress${NC}"
+            echo -e "URL: ${BLUE}${url}${NC}"
+            echo ""
+            echo -e "Check results at: ${url}"
+            
+            send_result_notification "VirusTotal — Scan Started" \
+                "$(printf "<b>File:</b>\n%s\n<b>Status:</b> Analysis in progress\n<b>Message:</b> Results will appear shortly." "$filepath")" \
+                "normal" "$url"
+        fi
+    fi
+}
+
+main "$@"

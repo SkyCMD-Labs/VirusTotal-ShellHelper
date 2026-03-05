@@ -1,0 +1,98 @@
+# VirusTotal Shell Helper
+
+[![Sync Wiki](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/actions/workflows/sync-wiki.yml/badge.svg)](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/actions/workflows/sync-wiki.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Bash](https://img.shields.io/badge/bash-5.0+-blue.svg)](https://www.gnu.org/software/bash/)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
+
+A lightweight shell script to check file cleanliness via VirusTotal. No Python, no complex setup — just `vt` CLI, `jq`, and bash.
+
+## Features
+
+- **Hash-based lookup** — checks if file already exists in VirusTotal before uploading
+- **Auto-upload** — uploads new files for analysis if not found
+- **Desktop notifications** — supports notify-send, dunstify, kdialog, zenity
+- **File manager integration** — right-click context menu for supported file managers
+
+## Quick Start
+
+```bash
+./install.sh
+```
+
+The installer will:
+1. Check system dependencies
+2. Download `vt` CLI if needed
+3. Install `vt-check` to `~/.local/bin/`
+4. Set up file manager context menu integration
+
+After installation, configure your VirusTotal API key:
+
+```bash
+vt init
+```
+
+Get a free API key at: https://www.virustotal.com/gui/my-apikey
+
+## Usage
+
+```bash
+vt-check [OPTIONS] <file>
+
+Options:
+  --no-wait    Don't wait for analysis if upload needed
+  --notify     Show desktop notifications
+  -h, --help   Show help
+```
+
+Or right-click any file → **Scan with VirusTotal**
+
+## Supported Platforms
+
+**Tested on:**
+- CachyOS, KDE Plasma, Dolphin
+
+**Should work on:**
+- Most Linux distributions with supported file managers
+- Notification backends: notify-send (libnotify), dunstify, kdialog, zenity
+- File managers: Dolphin, Nautilus, Nemo, Thunar, Caja
+
+Contributions and testing on other platforms welcome!
+
+## Requirements
+
+- `vt` — [VirusTotal CLI](https://github.com/VirusTotal/vt-cli)
+- `jq` — JSON processor
+- `sha256sum` — usually pre-installed
+
+## Documentation
+
+See [docs/](docs/) or the [**📖 Wiki**](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki) for detailed documentation:
+
+- [Installation](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/installation) — setup guide
+- [Usage](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/usage) — CLI options and examples
+- [How It Works](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/how-it-works) — technical overview
+- [File Managers](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/file-managers) — context menu setup
+- [Troubleshooting](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki/troubleshooting) — common issues
+
+## Privacy & Security
+
+⚠️ **Important:** Files uploaded to VirusTotal are shared with security researchers and antivirus companies. **Do not upload sensitive or confidential files.**
+
+## Contributing
+
+Contributions and testing on other platforms welcome! Please open an issue or PR.
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+## Links
+
+- [📖 Documentation Wiki](https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper/wiki)
+- [VirusTotal CLI](https://github.com/VirusTotal/vt-cli)
+- [Get a Free API Key](https://www.virustotal.com/gui/my-apikey)
+
+---
+
+**Note:** This is an unofficial tool and is not affiliated with or endorsed by VirusTotal.
