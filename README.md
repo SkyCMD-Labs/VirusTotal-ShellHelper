@@ -7,6 +7,9 @@
 
 A lightweight shell script to check file cleanliness via VirusTotal. No Python, no complex setup — just `vt` CLI, `jq`, and bash.
 
+> [!IMPORTANT]
+> This tool is **not a replacement for real-time antivirus software**. It provides on-demand scanning and file quarantine capabilities but does not offer real-time protection, behavioral analysis, or active threat prevention. Use this alongside proper security software, not as a substitute.
+
 ## Features
 
 - **Hash-based lookup** — checks if file already exists in VirusTotal before uploading
