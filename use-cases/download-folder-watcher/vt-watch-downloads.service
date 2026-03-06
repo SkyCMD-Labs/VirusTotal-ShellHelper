@@ -1,0 +1,17 @@
+[Unit]
+Description=VirusTotal Auto-Scan Downloads
+Documentation=https://github.com/SkyCMD-Labs/VirusTotal-ShellHelper
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/vt-watch-downloads
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

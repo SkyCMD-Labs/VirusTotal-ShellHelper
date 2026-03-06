@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+#
+# vt-watch-downloads - Auto-scan new downloads with VirusTotal
+#
+# Watches the Downloads directory for new files and automatically scans them.
+# Designed to run as a systemd user service.
+#
+
+set -o pipefail
+
+VERSION="1.0.0"
+
+# Configuration
+WATCH_DIR="${HOME}/Downloads"
+SCAN_QUEUE="${HOME}/.local/share/virustotal-shell/scan-queue"
+
+# VirusTotal limits
+MAX_FILE_SIZE=$((32 * 1024 * 1024))  # 32MB for free API
+
+# Rate limiting (VirusTotal free API: 4 requests/minute)
+SCAN_DELAY=30  # seconds between scans
+
+# Files to ignore (browser partial downloads, temp files)
+IGNORE_PATTERNS=(
+    "*.part"
+    "*.crdownload"
+    "*.tmp"
+    "*.temp"
+    "*.download"
+    ".*"  # hidden files
+)
+
+usage() {
+    cat <<EOF
+vt-watch-downloads v${VERSION} - Auto-scan downloads with VirusTotal
+
+Usage: vt-watch-downloads [OPTIONS]
+
+Options:
+  -d, --dir <path>      Watch directory (default: ~/Downloads)
+  -q, --quarantine      Auto-quarantine malicious files
+  -h, --help            Show this help message
+
+Examples:
+  vt-watch-downloads
+  vt-watch-downloads --dir ~/Desktop --quarantine
+
+Systemd Integration:
+  View logs:     journalctl --user -u vt-watch-downloads -f
+  Start/stop:    systemctl --user start/stop vt-watch-downloads
+  Enable/disable: systemctl --user enable/disable vt-watch-downloads
+
+Note: Requires inotify-tools package
+      Only scans files under 32MB (VirusTotal free API limit)
+EOF
+}
+
+should_scan() {
+    local file="$1"
+    local filename
+    filename=$(basename "$file")
+    
+    # Check ignore patterns
+    for pattern in "${IGNORE_PATTERNS[@]}"; do
+        case "$filename" in
+            $pattern) return 1 ;;
+        esac
+    done
+    
+    # Check file size
+    local size
+    size=$(stat -c %s "$file" 2>/dev/null || echo 0)
+    
+    if [[ $size -gt $MAX_FILE_SIZE ]]; then
+        echo "Skipping (too large): $filename ($(numfmt --to=iec-i --suffix=B $size))"
+        return 1
+    fi
+    
+    if [[ $size -eq 0 ]]; then
+        echo "Skipping (empty file): $filename"
+        return 1
+    fi
+    
+    return 0
+}
+
+scan_file() {
+    local file="$1"
+    
+    # Wait for file to stabilize (especially for large downloads)
+    sleep 2
+    
+    # Check if file still exists
+    if [[ ! -f "$file" ]]; then
+        echo "File disappeared: $file"
+        return 1
+    fi
+    
+    echo "Scanning: $(basename "$file")"
+    
+    # Build vt-check command
+    local cmd="vt-check --notify"
+    [[ "$AUTO_QUARANTINE" == "true" ]] && cmd="$cmd --quarantine"
+    
+    # Run scan and capture output to check if it was a lookup or upload
+    local output
+    output=$($cmd "$file" 2>&1)
+    local exit_code=$?
+    
+    # Print the output
+    echo "$output"
+    
+    if [[ $exit_code -eq 0 ]]; then
+        echo "Scan completed: $(basename "$file")"
+        
+        # Return 0 if it was a lookup (already analyzed), 1 if it was an upload
+        if echo "$output" | grep -q "File already analyzed in VirusTotal"; then
+            return 0  # Lookup - no delay needed
+        else
+            return 1  # Upload - apply rate limit delay
+        fi
+    else
+        echo "Scan failed: $(basename "$file")" >&2
+        return 1
+    fi
+}
+
+process_queue() {
+    local last_upload_time=0
+    
+    while true; do
+        if [[ -f "$SCAN_QUEUE" ]] && [[ -s "$SCAN_QUEUE" ]]; then
+            # Get first file from queue
+            local file
+            file=$(head -n 1 "$SCAN_QUEUE")
+            
+            # Remove from queue
+            sed -i '1d' "$SCAN_QUEUE"
+            
+            # Scan it
+            if [[ -n "$file" ]] && [[ -f "$file" ]]; then
+                local start_time
+                start_time=$(date +%s)
+                
+                scan_file "$file"
+                local scan_result=$?
+                
+                # Only apply rate limit delay if it was an upload (return code 1)
+                # Lookups (return code 0) don't count toward quota
+                if [[ $scan_result -ne 0 ]]; then
+                    local now
+                    now=$(date +%s)
+                    local elapsed=$((now - last_upload_time))
+                    
+                    if [[ $elapsed -lt $SCAN_DELAY ]]; then
+                        local remaining=$((SCAN_DELAY - elapsed))
+                        echo "Upload detected - waiting ${remaining}s (rate limit)"
+                        sleep "$remaining"
+                    else
+                        echo "Upload detected - no additional delay needed (${elapsed}s elapsed)"
+                    fi
+                    
+                    last_upload_time=$(date +%s)
+                else
+                    echo "Lookup only - no delay needed"
+                    sleep 1  # Small delay to avoid hammering
+                fi
+            fi
+        else
+            sleep 1
+        fi
+    done
+}
+
+main() {
+    # Parse arguments
+    AUTO_QUARANTINE=false
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--dir)
+                WATCH_DIR="$2"
+                shift 2
+                ;;
+            -q|--quarantine)
+                AUTO_QUARANTINE=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Error: Unknown option: $1" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Check dependencies
+    if ! command -v inotifywait &>/dev/null; then
+        echo "Error: inotifywait not found" >&2
+        echo "Install inotify-tools:" >&2
+        echo "  sudo pacman -S inotify-tools    # Arch/CachyOS" >&2
+        echo "  sudo apt install inotify-tools  # Debian/Ubuntu" >&2
+        exit 1
+    fi
+    
+    if ! command -v vt-check &>/dev/null; then
+        echo "Error: vt-check not found" >&2
+        echo "Please install VirusTotal Shell Helper first" >&2
+        exit 1
+    fi
+    
+    # Check watch directory exists
+    if [[ ! -d "$WATCH_DIR" ]]; then
+        echo "Error: Directory does not exist: $WATCH_DIR" >&2
+        exit 1
+    fi
+    
+    # Create queue directory
+    mkdir -p "$(dirname "$SCAN_QUEUE")"
+    
+    # Initialize queue file
+    touch "$SCAN_QUEUE"
+    
+    # Start queue processor in background
+    process_queue &
+    local queue_pid=$!
+    
+    # Cleanup on exit
+    trap "kill $queue_pid 2>/dev/null; exit" INT TERM EXIT
+    
+    echo "Started watching: $WATCH_DIR"
+    [[ "$AUTO_QUARANTINE" == "true" ]] && echo "Auto-quarantine: enabled"
+    echo "Scan delay: ${SCAN_DELAY}s"
+    echo "Max file size: $(numfmt --to=iec-i --suffix=B $MAX_FILE_SIZE)"
+    
+    # Watch for new files
+    inotifywait -m -e close_write -e moved_to --format '%w%f' "$WATCH_DIR" | while read -r file; do
+        # Skip directories
+        [[ -d "$file" ]] && continue
+        
+        # Check if we should scan this file
+        if should_scan "$file"; then
+            # Deduplicate with file locking (browsers trigger multiple events)
+            (
+                flock -x 200
+                if ! grep -Fxq "$file" "$SCAN_QUEUE" 2>/dev/null; then
+                    echo "New file detected: $(basename "$file")"
+                    echo "$file" >> "$SCAN_QUEUE"
+                else
+                    echo "Duplicate event ignored: $(basename "$file")"
+                fi
+            ) 200>"${SCAN_QUEUE}.lock"
+        fi
+    done
+}
+
+main "$@"
